@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lluvia en la oscuridad</title>
+<meta name="description" content="Sonido de lluvia y truenos con pantalla oscura para dormir, relajarte o concentrarte.">
+<meta name="theme-color" content="#000000">
+<style>
+  :root{--fg:#8d98a3;--fg2:#5d6873;--line:#2a333c;--acc:#7fa0c4}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#000;color:var(--fg);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    font-size:clamp(16px,calc(10px + 1vw),30px);overflow:hidden;
+    -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;background:#000}
+  button{font:inherit;color:inherit;cursor:pointer}
+  :focus-visible{outline:3px solid var(--acc);outline-offset:3px}
+
+  .chrome{transition:opacity .6s ease}
+  body.playing:not(.ui){cursor:none}
+  body.playing:not(.ui) .chrome{opacity:0;pointer-events:none}
+
+  .center{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.1em;text-align:center;padding:1em;pointer-events:none}
+  .center>*{pointer-events:auto}
+  h1{margin:0;font-weight:300;letter-spacing:.35em;text-transform:uppercase;font-size:1.1em;color:var(--fg2)}
+  .sub{margin:0;max-width:30em;color:var(--fg2);font-size:.85em;line-height:1.5}
+  body.playing h1,body.playing .sub{opacity:0;transition:opacity .8s}
+
+  #play{width:clamp(84px,12vw,170px);aspect-ratio:1;border-radius:50%;border:2px solid var(--line);
+    background:rgba(255,255,255,.03);display:grid;place-items:center;transition:background .2s,border-color .2s}
+  #play:hover{background:rgba(255,255,255,.07);border-color:#3b4753}
+  #play svg{width:38%;height:38%;fill:var(--fg)}
+  #play .ico-pause{display:none}
+  body.playing #play .ico-play{display:none}
+  body.playing #play .ico-pause{display:block}
+
+  #menuBtn{position:fixed;top:max(14px,env(safe-area-inset-top));right:max(14px,env(safe-area-inset-right));
+    width:3em;height:3em;border-radius:50%;border:2px solid var(--line);background:rgba(0,0,0,.5);display:grid;place-items:center}
+  #menuBtn svg{width:50%;height:50%;stroke:var(--fg);fill:none;stroke-width:2;stroke-linecap:round}
+
+  #panel{position:fixed;top:0;right:0;bottom:0;width:min(26em,94vw);background:rgba(7,9,12,.96);
+    border-left:1px solid var(--line);padding:1.2em 1.3em 2em;overflow-y:auto;z-index:5;
+    visibility:hidden;transform:translateX(105%);transition:transform .3s ease,visibility 0s linear .3s}
+  #panel.open{visibility:visible;transform:none;transition:transform .3s ease}
+  #panel h2{margin:.1em 0 1em;font-weight:400;font-size:1em;letter-spacing:.2em;text-transform:uppercase;color:var(--fg2)}
+  .row{margin-bottom:1.3em}
+  .row label,.row .lab{display:flex;justify-content:space-between;margin-bottom:.35em;font-size:.9em}
+  .row output{color:var(--fg2)}
+  input[type=range]{width:100%;height:2.2em;accent-color:var(--acc);background:transparent;margin:0}
+  .chips{display:flex;flex-wrap:wrap;gap:.5em}
+  .chip{padding:.55em .9em;border-radius:2em;border:1.5px solid var(--line);background:transparent;font-size:.9em}
+  .chip[aria-pressed=true]{border-color:var(--acc);color:#b9cde2;background:rgba(127,160,196,.12)}
+  .tbtn{width:100%;margin-top:.6em;padding:.7em;border-radius:.7em;border:1.5px solid var(--line);background:transparent}
+  #close{margin-top:.5em;width:100%;padding:.8em;border-radius:.7em;border:1.5px solid var(--line);background:transparent}
+
+  /* Espacio para anuncios: se oculta solo si está vacío */
+  #ad{position:fixed;left:50%;bottom:max(8px,env(safe-area-inset-bottom));transform:translateX(-50%);
+    width:min(100%,728px);max-height:110px;overflow:hidden;z-index:2;text-align:center}
+  #ad:empty{display:none}
+</style>
+</head>
+<body>
+<canvas id="rain" aria-hidden="true"></canvas>
+
+<main class="center chrome" id="centerBlock">
+  <h1>Lluvia</h1>
+  <button id="play" aria-label="Reproducir lluvia">
+    <svg class="ico-play" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z"/></svg>
+    <svg class="ico-pause" viewBox="0 0 24 24"><rect x="5" y="4" width="5" height="16" rx="1.2"/><rect x="14" y="4" width="5" height="16" rx="1.2"/></svg>
+  </button>
+  <p class="sub">Sonido de lluvia y truenos en la oscuridad, para dormir, relajarte o concentrarte.</p>
+</main>
+
+<button id="menuBtn" class="chrome" aria-label="Abrir menú" aria-expanded="false" aria-controls="panel">
+  <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+</button>
+
+<aside id="panel" aria-label="Ajustes de lluvia">
+  <h2>Ajustes</h2>
+
+  <div class="row"><label for="vol">Volumen <output id="volV"></output></label>
+    <input type="range" id="vol" min="0" max="100" step="1"></div>
+
+  <div class="row"><label for="int">Intensidad <output id="intV"></output></label>
+    <input type="range" id="int" min="0" max="100" step="1"></div>
+
+  <div class="row"><label for="thunder">Truenos <output id="thunderV"></output></label>
+    <input type="range" id="thunder" min="0" max="100" step="1">
+    <button class="tbtn" id="tbtn">⚡ Probar trueno</button></div>
+
+  <div class="row"><div class="lab">Tipo de lluvia</div>
+    <div class="chips" id="types" role="group" aria-label="Tipo de lluvia">
+      <button class="chip" data-type="llovizna">Llovizna</button>
+      <button class="chip" data-type="normal">Normal</button>
+      <button class="chip" data-type="techo">Techo de chapa</button>
+      <button class="chip" data-type="ventana">Ventana</button>
+      <button class="chip" data-type="bosque">Bosque</button>
+    </div></div>
+
+  <div class="row"><label for="bright">Brillo de la imagen <output id="brightV"></output></label>
+    <input type="range" id="bright" min="0" max="100" step="1"></div>
+
+  <div class="row"><div class="lab">Apagar en</div>
+    <div class="chips" id="timers" role="group" aria-label="Temporizador">
+      <button class="chip" data-min="0">No</button>
+      <button class="chip" data-min="30">30 min</button>
+      <button class="chip" data-min="60">1 h</button>
+      <button class="chip" data-min="120">2 h</button>
+    </div></div>
+
+  <button id="close">Cerrar</button>
+</aside>
+
+<!-- ANUNCIOS: pegá acá el código de tu red publicitaria (AdSense, etc.). Mientras esté vacío no se muestra nada. -->
+<div id="ad"></div>
+
+<noscript><p style="position:fixed;inset:0;display:grid;place-items:center">Necesitás activar JavaScript para escuchar la lluvia.</p></noscript>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const body = document.body;
+
+/* ---------- Estado y preferencias ---------- */
+const S = { vol:.6, int:.55, thunder:.35, type:'normal', bright:.4, timer:0 };
+try { Object.assign(S, JSON.parse(localStorage.getItem('lluvia-oscura') || '{}')); } catch(e){}
+const save = () => { try { localStorage.setItem('lluvia-oscura', JSON.stringify(S)); } catch(e){} };
+let playing = false, menuOpen = false;
+
+/* ---------- Audio ---------- */
+let ac, master, rainOut, thunderOut, bufs = {}, layer = null, thunderTimer = null, sleepTimer = null, stopTimer = null;
+
+const TYPES = {
+  llovizna:{ hp:1200, lp:7500, bed:.35, bodyLp:500, body:.12, dr:{ rate:30, f0:3500, f1:7000, gain:.10, decay:.0025 } },
+  normal:  { hp:500,  lp:6500, bed:.70, bodyLp:900, body:.35, dr:{ rate:60, f0:2500, f1:6000, gain:.12, decay:.0030 } },
+  techo:   { hp:800,  lp:8500, bed:.45, bodyLp:700, body:.20, dr:{ rate:90, f0:3000, f1:7500, gain:.16, decay:.0035 } },
+  ventana: { hp:250,  lp:3200, bed:.40, bodyLp:450, body:.45, dr:{ rate:35, f0:900,  f1:2200, gain:.18, decay:.0060 } },
+  bosque:  { hp:200,  lp:2600, bed:.60, bodyLp:600, body:.50, dr:{ rate:25, f0:700,  f1:1800, gain:.18, decay:.0080 } }
+};
+
+// Ruido en bucle sin cortes audibles (crossfade del final con el inicio)
+function noiseBuffer(kind, secs){
+  const sr = ac.sampleRate, len = Math.floor(sr*secs), fade = Math.floor(sr*.5), n = len+fade;
+  const buf = ac.createBuffer(2, len, sr);
+  for (let c=0;c<2;c++){
+    const t = new Float32Array(n);
+    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0,br=0;
+    for (let i=0;i<n;i++){
+      const w = Math.random()*2-1;
+      if (kind==='white') t[i] = w*.5;
+      else if (kind==='pink'){
+        b0=.99886*b0+w*.0555179; b1=.99332*b1+w*.0750759; b2=.96900*b2+w*.1538520;
+        b3=.86650*b3+w*.3104856; b4=.55000*b4+w*.5329522; b5=-.7616*b5-w*.0168980;
+        t[i]=(b0+b1+b2+b3+b4+b5+b6+w*.5362)*.11; b6=w*.115926;
+      } else { br=(br+.02*w)/1.02; t[i]=br*3.5; }
+    }
+    const d = buf.getChannelData(c);
+    for (let i=0;i<len;i++){
+      if (i<fade){ const a=i/fade*Math.PI/2; d[i]=t[i]*Math.sin(a)+t[len+i]*Math.cos(a); }
+      else d[i]=t[i];
+    }
+  }
+  return buf;
+}
+
+// Golpecitos de gotas: ruido filtrado muy corto (sin tono, suena a "tic" suave, no a "pip")
+// Se escribe en bucle circular para que no haya corte al repetirse.
+function dropBuffer(p, rate, secs){
+  const sr = ac.sampleRate, len = Math.floor(sr*secs), buf = ac.createBuffer(2, len, sr);
+  for (let c=0;c<2;c++){
+    const d = buf.getChannelData(c), n = Math.floor(rate*secs);
+    for (let k=0;k<n;k++){
+      const start = Math.floor(Math.random()*len);
+      const f = p.f0*Math.pow(p.f1/p.f0, Math.random());
+      const amp = (Math.pow(Math.random(),2.5)*.9+.1)*p.gain;
+      const tau = p.decay*(.6+Math.random()*.8);
+      const a = 1 - Math.exp(-2*Math.PI*f/sr);          // filtro pasa-bajos de un polo
+      const r = Math.exp(-1/(tau*sr));
+      const N = Math.min(Math.floor(tau*sr*5), len);
+      let y = 0, env = amp;
+      for (let i=0;i<N;i++){
+        y += a*((Math.random()*2-1) - y);
+        d[(start+i)%len] += y*env;
+        env *= r;
+      }
+    }
+  }
+  return buf;
+}
+
+// Respuesta de impulso sintética: ruido que decae y se va oscureciendo con el tiempo
+function makeIR(secs){
+  const sr = ac.sampleRate, len = Math.floor(sr*secs), ir = ac.createBuffer(2, len, sr);
+  for (let c=0;c<2;c++){
+    const d = ir.getChannelData(c); let y = 0;
+    for (let i=0;i<len;i++){
+      const t = i/sr, f = 3500*Math.exp(-t/1.0) + 250;
+      y += (1 - Math.exp(-2*Math.PI*f/sr))*((Math.random()*2 - 1) - y);
+      d[i] = y*Math.exp(-t/.85)*(1 - Math.exp(-t/.02));
+    }
+  }
+  return ir;
+}
+
+function setupAudio(){
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  ac = new Ctx();
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.ratio.value = 6; comp.attack.value = .01; comp.release.value = .3;
+  master = ac.createGain(); master.gain.value = 0;
+  rainOut = ac.createGain(); rainOut.gain.value = 2.5;
+  thunderOut = ac.createGain(); thunderOut.gain.value = 4;
+  // Reverberación para los truenos: cola larga y difusa, como el eco del cielo
+  const tDry = ac.createGain(); tDry.gain.value = .75;
+  const conv = ac.createConvolver(); conv.normalize = true; conv.buffer = makeIR(3.5);
+  const tWet = ac.createGain(); tWet.gain.value = 1.1;
+  thunderOut.connect(tDry); tDry.connect(master);
+  thunderOut.connect(conv); conv.connect(tWet); tWet.connect(master);
+  rainOut.connect(master); master.connect(comp); comp.connect(ac.destination);
+  bufs.pink = noiseBuffer('pink', 8);
+  bufs.brown = noiseBuffer('brown', 8);
+  bufs.white = noiseBuffer('white', 2);
+}
+
+const volCurve = v => Math.pow(v, 2);
+function applyVol(){ if (ac && playing) master.gain.setTargetAtTime(volCurve(S.vol), ac.currentTime, .05); }
+
+function makeLayer(type){
+  const p = TYPES[type], out = ac.createGain(), nodes = [];
+  out.gain.value = 0; out.connect(rainOut);
+  const loop = (buf, dest) => {
+    const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+    s.start(0, Math.random()*buf.duration); nodes.push(s); s.connect(dest); return s;
+  };
+  const filt = (t, f) => { const b = ac.createBiquadFilter(); b.type = t; b.frequency.value = f; return b; };
+  const gain = () => ac.createGain();
+
+  const hissG = gain(), hp = filt('highpass', p.hp), lp = filt('lowpass', p.lp);
+  hp.connect(lp); lp.connect(hissG); hissG.connect(out); loop(bufs.pink, hp);
+
+  const bodyG = gain(), bl = filt('lowpass', p.bodyLp);
+  bl.connect(bodyG); bodyG.connect(out); loop(bufs.pink, bl);
+
+  const sparseG = gain(), denseG = gain();
+  sparseG.connect(out); denseG.connect(out);
+  loop(dropBuffer(p.dr, p.dr.rate, 8), sparseG);
+  loop(dropBuffer(p.dr, p.dr.rate*3, 8), denseG);
+
+  const L = { type, p, out, nodes, hissG, bodyG, lp, sparseG, denseG };
+  applyInt(L, 0.01);
+  out.gain.setTargetAtTime(1, ac.currentTime, .4);
+  return L;
+}
+
+function applyInt(L = layer, tc = .3){
+  if (!L || !ac) return;
+  const i = S.int, t = ac.currentTime, p = L.p;
+  L.hissG.gain.setTargetAtTime(p.bed*(.12+.88*Math.pow(i,1.3)), t, tc);
+  L.bodyG.gain.setTargetAtTime(p.body*(.2+.8*i), t, tc);
+  L.lp.frequency.setTargetAtTime(p.lp*(.55+.45*i), t, tc);
+  L.sparseG.gain.setTargetAtTime(.3+.5*i, t, tc);
+  L.denseG.gain.setTargetAtTime(Math.pow(i,1.6)*.6, t, tc);
+}
+
+function retireLayer(L){
+  if (!L) return;
+  L.out.gain.setTargetAtTime(0, ac.currentTime, .3);
+  setTimeout(() => { L.nodes.forEach(n => { try{ n.stop(); }catch(e){} }); try{ L.out.disconnect(); }catch(e){} }, 2500);
+}
+function switchLayer(){ const old = layer; layer = makeLayer(S.type); retireLayer(old); }
+
+/* ---------- Truenos ---------- */
+let fl = 0; // intensidad del destello (visual)
+function flash(close){
+  const pk = Math.min(.6, (close ? .5 : .25) * (.5 + S.bright));
+  fl = pk;
+  setTimeout(() => { fl = Math.max(fl, pk*.7); }, 150 + Math.random()*120);
+  if (close) setTimeout(() => { fl = Math.max(fl, pk*.45); }, 420 + Math.random()*150);
+}
+
+function thunder(){
+  if (!ac || !playing) return;
+  const now = ac.currentTime, t = S.thunder;
+  const close = Math.random() < .3 + .3*t;
+  const delay = close ? .2 + Math.random()*.8 : 1 + Math.random()*3.5;
+  flash(close);
+  const start = now + delay, dur = close ? 4 + Math.random()*3 : 6 + Math.random()*5;
+  const vol = (close ? .9 : .55) * (.35 + .65*t) * (.75 + Math.random()*.25);
+
+  // Envolvente natural: varios retumbos superpuestos (tramos del rayo), cada uno más apagado,
+  // más una vibración rápida que da la textura de "rodar" en vez de un barrido liso.
+  const rate = 100, n = Math.floor(dur*rate), env = new Float32Array(n);
+  const pulses = [], count = 9 + Math.floor(Math.random()*8);
+  for (let k=0;k<count;k++){
+    const t0 = k === 0 ? 0 : Math.pow(Math.random(), 1.4)*dur*.7;
+    pulses.push({
+      t0,
+      a: (k === 0 ? 1 : .25 + Math.random()*.55) * Math.exp(-t0/(dur*.55)),
+      atk: k === 0 ? (close ? .02 : .35 + Math.random()*.5) : .05 + Math.random()*.3,
+      dec: .35 + Math.random()*1.2
+    });
+  }
+  let jit = 0, peak = 1e-6;
+  for (let i=0;i<n;i++){
+    const x = i/rate; let v = 0;
+    for (const p of pulses){
+      const u = x - p.t0; if (u < 0) continue;
+      v += p.a*(u < p.atk ? u/p.atk : Math.exp(-(u - p.atk)/p.dec));
+    }
+    jit += .3*((Math.random()*2 - 1) - jit);
+    v = Math.max(0, v*(1 + 1.2*jit));
+    env[i] = v; if (v > peak) peak = v;
+  }
+  for (let i=0;i<n;i++){
+    const x = i/n;
+    env[i] = env[i]/peak*vol*(x > .8 ? Math.pow((1 - x)/.2, 2) : 1);
+  }
+  env[0] = 0; env[n-1] = 0;
+  const g = ac.createGain(); g.gain.value = 0;
+  g.gain.setValueCurveAtTime(env, start, dur);
+  g.connect(thunderOut);
+
+  // Capa media (ruido rosa que se va apagando): se escucha en celulares y TVs
+  const mid = ac.createBufferSource(); mid.buffer = bufs.pink; mid.loop = true;
+  const mlp = ac.createBiquadFilter(); mlp.type = 'lowpass'; mlp.Q.value = .5;
+  mlp.frequency.setValueAtTime(close ? 2400 : 1200, start);
+  mlp.frequency.exponentialRampToValueAtTime(160, start + dur);
+  mid.connect(mlp); mlp.connect(g);
+  mid.start(start, Math.random()*6); mid.stop(start + dur + .5);
+
+  // Capa grave (ruido marrón): el peso en parlantes que llegan a graves
+  const low = ac.createBufferSource(); low.buffer = bufs.brown; low.loop = true;
+  const llp = ac.createBiquadFilter(); llp.type = 'lowpass'; llp.frequency.value = 220;
+  const lg = ac.createGain(); lg.gain.value = 1.2;
+  low.connect(llp); llp.connect(lg); lg.connect(g);
+  low.start(start, Math.random()*6); low.stop(start + dur + .5);
+
+  if (close){ // chasquido: tres golpes secos y cortos, cada uno más débil
+    const crack = (dt, amp) => {
+      const s0 = start + dt;
+      const c = ac.createBufferSource(); c.buffer = bufs.white;
+      const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = .6;
+      bp.frequency.value = 1800 + Math.random()*1800;
+      const cg = ac.createGain();
+      cg.gain.setValueAtTime(0, s0);
+      cg.gain.linearRampToValueAtTime(amp, s0 + .004);
+      cg.gain.setTargetAtTime(0, s0 + .004, .03);
+      c.connect(bp); bp.connect(cg); cg.connect(thunderOut);
+      c.start(s0, Math.random()); c.stop(s0 + .5);
+    };
+    const a = .7*(.4 + .6*t);
+    crack(0, a); crack(.05 + Math.random()*.08, a*.6); crack(.2 + Math.random()*.2, a*.35);
+  }
+}
+
+function scheduleThunder(first){
+  clearTimeout(thunderTimer);
+  if (!playing || S.thunder <= .01) return;
+  const mean = 90 - 78*S.thunder;                       // 90 s (poco) a 12 s (mucho)
+  const wait = (first ? mean*.15 : mean) * (.5 + Math.random()) * 1000;
+  thunderTimer = setTimeout(() => { thunder(); scheduleThunder(); }, wait);
+}
+
+/* ---------- Visual (canvas) ---------- */
+const cv = $('#rain'), g2 = cv.getContext('2d');
+let W, H, sc, drops = [], splashes = [], vis = 0, visRate = 1.2, last = 0, raf = 0, fog = null;
+
+function spawn(d, anywhere){
+  d.z = Math.random();
+  d.x = Math.random()*W*1.2 - W*.1;
+  d.speed = H*(.7 + .9*d.z);
+  d.landY = H*(.55 + .43*d.z);
+  d.y = anywhere ? Math.random()*d.landY : -Math.random()*H*.2;
+  return d;
+}
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  sc = Math.max(.5, Math.min(dpr, 1920/Math.max(1, innerWidth)));
+  W = cv.width = Math.floor(innerWidth*sc); H = cv.height = Math.floor(innerHeight*sc);
+  const maxN = Math.max(200, Math.min(700, Math.floor(W*H/3500)));
+  drops = []; for (let i=0;i<maxN;i++) drops.push(spawn({}, true));
+  splashes = [];
+  fog = g2.createLinearGradient(0, H*.5, 0, H);
+  fog.addColorStop(0, 'rgba(14,20,28,0)'); fog.addColorStop(1, 'rgba(14,20,28,1)');
+}
+
+function frame(ts){
+  raf = requestAnimationFrame(frame);
+  const dt = Math.min((ts - last)/1000, .05); last = ts;
+  vis += ((playing ? 1 : 0) - vis) * Math.min(1, dt*visRate);
+  if (!playing && vis < .01){
+    g2.fillStyle = '#000'; g2.fillRect(0,0,W,H);
+    cancelAnimationFrame(raf); raf = 0; return;
+  }
+  const B = (.1 + 1.4*S.bright) * vis;
+  g2.globalAlpha = 1; g2.fillStyle = '#000'; g2.fillRect(0,0,W,H);
+
+  g2.globalAlpha = .45*B; g2.fillStyle = fog; g2.fillRect(0, H*.5, W, H*.5);
+
+  if (fl > .002){
+    g2.globalAlpha = Math.min(.5, fl*vis); g2.fillStyle = 'rgb(120,140,170)'; g2.fillRect(0,0,W,H);
+    fl *= Math.exp(-dt*9);
+  }
+
+  const count = Math.floor(drops.length*(.1 + .9*S.int));
+  const speedMul = .75 + .5*S.int, lenMul = .7 + .6*S.int;
+  const buckets = [[],[],[]];
+  for (let i=0;i<count;i++){
+    const d = drops[i];
+    d.y += d.speed*speedMul*dt;
+    d.x -= d.speed*speedMul*dt*.08;
+    if (d.y > d.landY){
+      if (d.z > .35 && splashes.length < 90 && Math.random() < .5)
+        splashes.push({ x:d.x, y:d.landY, r:1, a:.25 + .25*d.z, z:d.z });
+      spawn(d, false); continue;
+    }
+    buckets[d.z < .33 ? 0 : d.z < .66 ? 1 : 2].push(d);
+  }
+  const spec = [[.10,.7],[.22,1.0],[.38,1.5]];
+  for (let b=0;b<3;b++){
+    g2.globalAlpha = 1;
+    g2.strokeStyle = 'rgba(150,170,195,' + (spec[b][0]*B).toFixed(3) + ')';
+    g2.lineWidth = spec[b][1]*sc; g2.lineCap = 'round';
+    g2.beginPath();
+    for (const d of buckets[b]){
+      const l = H*(.015 + .05*d.z)*lenMul;
+      g2.moveTo(d.x, d.y); g2.lineTo(d.x + l*.08, d.y - l);
+    }
+    g2.stroke();
+  }
+  g2.lineWidth = sc;
+  for (let i=splashes.length-1;i>=0;i--){
+    const s = splashes[i];
+    s.r += dt*(30 + 40*s.z)*sc; s.a -= dt*1.8;
+    if (s.a <= 0){ splashes.splice(i,1); continue; }
+    g2.strokeStyle = 'rgba(150,170,195,' + (s.a*B*.6).toFixed(3) + ')';
+    g2.beginPath(); g2.ellipse(s.x, s.y, s.r, s.r*.3, 0, 0, Math.PI*2); g2.stroke();
+  }
+  g2.globalAlpha = 1;
+}
+function startLoop(){ if (!raf){ last = performance.now(); raf = requestAnimationFrame(frame); } }
+
+/* ---------- Pantalla encendida y sesión multimedia ---------- */
+let wl = null;
+async function lockScreen(){ try { if ('wakeLock' in navigator) wl = await navigator.wakeLock.request('screen'); } catch(e){} }
+function unlockScreen(){ try { wl && wl.release(); } catch(e){} wl = null; }
+document.addEventListener('visibilitychange', () => {
+  if (!playing || document.visibilityState !== 'visible') return;
+  lockScreen();
+  if (ac && ac.state !== 'running') ac.resume();
+});
+function setupMediaSession(){
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title:'Lluvia en la oscuridad' });
+    navigator.mediaSession.setActionHandler('play', () => { if (!playing) start(); });
+    navigator.mediaSession.setActionHandler('pause', () => { if (playing) stop(); });
+  } catch(e){}
+}
+
+/* ---------- Play / Stop ---------- */
+const playBtn = $('#play');
+function armSleepTimer(){
+  clearTimeout(sleepTimer);
+  if (S.timer > 0 && playing) sleepTimer = setTimeout(() => stop(6), S.timer*60000);
+}
+async function start(){
+  clearTimeout(stopTimer);
+  if (!ac) setupAudio();
+  try { await ac.resume(); } catch(e){}
+  playing = true; visRate = 1.2;
+  master.gain.cancelScheduledValues(ac.currentTime);
+  master.gain.setTargetAtTime(volCurve(S.vol), ac.currentTime, .5);
+  if (!layer) layer = makeLayer(S.type); else if (layer.type !== S.type) switchLayer();
+  scheduleThunder(true); armSleepTimer();
+  body.classList.add('playing'); playBtn.setAttribute('aria-label','Pausar lluvia');
+  showUI(); startLoop(); lockScreen(); setupMediaSession();
+}
+function stop(tau = .4){
+  playing = false; visRate = tau > 1 ? .25 : 1.2;
+  clearTimeout(thunderTimer); clearTimeout(sleepTimer);
+  if (ac) master.gain.setTargetAtTime(0, ac.currentTime, tau);
+  clearTimeout(stopTimer);
+  stopTimer = setTimeout(() => { if (!playing && ac) ac.suspend(); }, tau*4000 + 500);
+  body.classList.remove('playing'); playBtn.setAttribute('aria-label','Reproducir lluvia');
+  unlockScreen(); showUI(); startLoop();
+}
+const toggle = () => playing ? stop() : start();
+playBtn.addEventListener('click', toggle);
+
+/* ---------- Menú y controles ---------- */
+const panel = $('#panel'), menuBtn = $('#menuBtn');
+function openMenu(){ menuOpen = true; panel.classList.add('open'); menuBtn.setAttribute('aria-expanded','true'); showUI(); setTimeout(() => $('#vol').focus(), 60); }
+function closeMenu(){ menuOpen = false; panel.classList.remove('open'); menuBtn.setAttribute('aria-expanded','false'); showUI(); playBtn.focus(); }
+menuBtn.addEventListener('click', () => menuOpen ? closeMenu() : openMenu());
+$('#close').addEventListener('click', closeMenu);
+
+function bindRange(id, key, fn){
+  const el = $('#'+id), out = $('#'+id+'V');
+  el.value = Math.round(S[key]*100); out.textContent = el.value + '%';
+  el.addEventListener('input', () => { S[key] = el.value/100; out.textContent = el.value + '%'; if (fn) fn(); save(); });
+}
+bindRange('vol', 'vol', applyVol);
+bindRange('int', 'int', () => applyInt());
+bindRange('thunder', 'thunder', () => scheduleThunder(true));
+bindRange('bright', 'bright');
+$('#tbtn').addEventListener('click', () => { if (playing) thunder(); else start().then(() => setTimeout(thunder, 300)); });
+
+function markChips(sel, attr, val){
+  document.querySelectorAll(sel + ' .chip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset[attr] == val)));
+}
+markChips('#types', 'type', S.type); markChips('#timers', 'min', S.timer);
+$('#types').addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  S.type = b.dataset.type; markChips('#types', 'type', S.type); save();
+  if (ac && playing) switchLayer();
+});
+$('#timers').addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  S.timer = Number(b.dataset.min); markChips('#timers', 'min', S.timer); save(); armSleepTimer();
+});
+
+/* ---------- Mostrar/ocultar interfaz (mouse, touch, control remoto) ---------- */
+let uiTimer, swallow = false;
+function showUI(){
+  body.classList.add('ui'); clearTimeout(uiTimer);
+  uiTimer = setTimeout(() => { if (playing && !menuOpen) body.classList.remove('ui'); }, 4500);
+}
+['mousemove','pointerdown','touchstart'].forEach(ev => document.addEventListener(ev, showUI, { passive:true }));
+document.addEventListener('keydown', e => {
+  // Si la interfaz estaba oculta, la primera tecla solo la muestra (evita pausar sin querer)
+  if (playing && !body.classList.contains('ui')){ e.preventDefault(); e.stopPropagation(); swallow = true; showUI(); return; }
+  showUI();
+  if (e.key === 'Escape' && menuOpen){ closeMenu(); return; }
+  if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey){ menuOpen ? closeMenu() : openMenu(); return; }
+  if (e.code === 'Space' && document.activeElement === document.body){ e.preventDefault(); toggle(); }
+}, true);
+document.addEventListener('keyup', e => { if (swallow){ e.preventDefault(); e.stopPropagation(); swallow = false; } }, true);
+
+window.addEventListener('resize', resize);
+resize();
+g2.fillStyle = '#000'; g2.fillRect(0,0,W,H);
+playBtn.focus();
+})();
+</script>
+</body>
+</html>
